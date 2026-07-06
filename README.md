@@ -18,6 +18,20 @@ The project includes a local web console for editing configuration, starting or 
 - Test notification button for validating Lark / Gmail / DingTalk without starting Discord monitoring.
 - Runtime log, per-session log view, clear-log action, and recent-message storage.
 
+## Screenshots
+
+### Admin Console
+
+![Admin console preview](docs/images/admin-console.svg)
+
+### Recent Messages
+
+![Recent message history preview](docs/images/message-history.svg)
+
+### Lark / Feishu Notification
+
+![Lark notification card preview](docs/images/lark-card.svg)
+
 ## Important Notice
 
 This project currently reads Discord credentials from `DISCORD_USER_TOKEN`. Automating a personal Discord account may violate Discord's terms and can put the account at risk. Use only in environments where you have authorization and understand the risk. Do not commit tokens, webhook URLs, email passwords, logs, or message history.

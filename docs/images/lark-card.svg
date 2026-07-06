@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760" role="img" aria-label="Lark notification card preview">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#eef2ff"/>
+      <stop offset="1" stop-color="#f5f7fb"/>
+    </linearGradient>
+    <linearGradient id="purple" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6d5dfc"/>
+      <stop offset="1" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#3b3f60" flood-opacity="0.22"/>
+    </filter>
+    <style>
+      .title { font: 750 27px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #111827; }
+      .card-title { font: 750 22px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #ffffff; }
+      .label { font: 650 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #6b7280; }
+      .value { font: 650 18px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #111827; }
+      .body { font: 500 17px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #1f2937; }
+      .small { font: 500 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #6b7280; }
+    </style>
+  </defs>
+  <rect width="1280" height="760" rx="34" fill="url(#bg)"/>
+  <text x="90" y="86" class="title">Lark / Feishu Card Preview</text>
+  <text x="90" y="116" class="small">Readable channel, author, content, and metadata sections.</text>
+
+  <g filter="url(#shadow)" transform="translate(350 92)">
+    <rect width="580" height="572" rx="24" fill="#ffffff"/>
+    <rect width="580" height="116" rx="24" fill="url(#purple)"/>
+    <path d="M0 92h580v40H0z" fill="url(#purple)"/>
+    <text x="32" y="48" class="card-title">dc-message-test · Kamavv</text>
+    <text x="32" y="80" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="14" font-weight="600" fill="#e9e7ff">Discord Alert Bridge</text>
+
+    <g transform="translate(32 148)">
+      <rect width="244" height="90" rx="16" fill="#f3f4f8"/>
+      <text x="18" y="30" class="label">Channel</text>
+      <text x="18" y="62" class="value">#dc-message-test</text>
+    </g>
+    <g transform="translate(304 148)">
+      <rect width="244" height="90" rx="16" fill="#f3f4f8"/>
+      <text x="18" y="30" class="label">Author</text>
+      <text x="18" y="62" class="value">Kamavv</text>
+    </g>
+
+    <g transform="translate(32 270)">
+      <text x="0" y="0" class="label">Message</text>
+      <rect x="0" y="20" width="516" height="132" rx="18" fill="#f9fafb" stroke="#e5e7eb"/>
+      <text x="22" y="58" class="body">This is an example Discord message.</text>
+      <text x="22" y="90" class="body">Attachments and embeds can be summarized</text>
+      <text x="22" y="122" class="body">below the main content.</text>
+    </g>
+
+    <g transform="translate(32 448)">
+      <rect width="516" height="72" rx="16" fill="#f3f4f8"/>
+      <text x="20" y="28" class="small">Server: Demo Guild · Message ID: 1523509023725584465</text>
+      <text x="20" y="52" class="small">Jump URL: https://discord.com/channels/.../.../...</text>
+    </g>
+  </g>
+
+  <g transform="translate(90 218)">
+    <rect width="210" height="58" rx="18" fill="#ffffff" filter="url(#shadow)"/>
+    <text x="24" y="35" class="value">Clean layout</text>
+    <rect y="92" width="210" height="58" rx="18" fill="#ffffff" filter="url(#shadow)"/>
+    <text x="24" y="127" class="value">No secrets</text>
+    <rect y="184" width="210" height="58" rx="18" fill="#ffffff" filter="url(#shadow)"/>
+    <text x="24" y="219" class="value">Fast scanning</text>
+  </g>
+</svg>

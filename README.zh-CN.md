@@ -18,6 +18,20 @@
 - 支持“测试通知”，不启动 Discord 监听也能测试 Lark / Gmail / 钉钉。
 - 支持运行日志、当前会话日志、清空日志和最近消息记录。
 
+## 效果图
+
+### 管理后台
+
+![管理后台效果图](docs/images/admin-console.svg)
+
+### 最近消息
+
+![最近消息效果图](docs/images/message-history.svg)
+
+### Lark / 飞书通知
+
+![Lark 通知卡片效果图](docs/images/lark-card.svg)
+
 ## 重要说明
 
 当前项目从 `DISCORD_USER_TOKEN` 读取 Discord 凭据。自动化个人 Discord 账号可能违反 Discord 服务条款，也可能带来账号风险。请只在你有授权且理解风险的环境中使用。不要提交 token、Webhook URL、邮箱密码、日志或消息历史。

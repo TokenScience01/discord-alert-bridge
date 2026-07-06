@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760" role="img" aria-label="Recent message history preview">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#111827"/>
+      <stop offset="1" stop-color="#263449"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#000000" flood-opacity="0.26"/>
+    </filter>
+    <style>
+      .title { font: 700 26px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #f7f8fc; }
+      .label { font: 650 15px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #c5cede; }
+      .small { font: 500 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #8792a6; }
+      .mono { font: 500 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #cbd5e1; }
+      .body { font: 500 15px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #e7ebf5; }
+    </style>
+  </defs>
+  <rect width="1280" height="760" rx="34" fill="url(#bg)"/>
+
+  <g filter="url(#shadow)">
+    <rect x="76" y="62" width="1128" height="636" rx="26" fill="#10141e"/>
+  </g>
+  <g transform="translate(116 106)">
+    <text class="title" x="0" y="0">Recent Messages</text>
+    <text class="small" x="0" y="30">Messages are stored locally and grouped by channel for quick review.</text>
+
+    <g transform="translate(0 78)">
+      <rect width="270" height="472" rx="22" fill="#161c29"/>
+      <text x="22" y="38" class="label">Channels</text>
+      <g transform="translate(20 70)">
+        <rect width="230" height="58" rx="14" fill="#5865f2" opacity="0.18"/>
+        <text x="18" y="25" class="label">#dc-message-test</text>
+        <text x="18" y="46" class="small">24 messages</text>
+      </g>
+      <g transform="translate(20 146)">
+        <rect width="230" height="58" rx="14" fill="#222a3a"/>
+        <text x="18" y="25" class="label">#alerts</text>
+        <text x="18" y="46" class="small">9 messages</text>
+      </g>
+      <g transform="translate(20 222)">
+        <rect width="230" height="58" rx="14" fill="#222a3a"/>
+        <text x="18" y="25" class="label">#ops-feed</text>
+        <text x="18" y="46" class="small">4 messages</text>
+      </g>
+    </g>
+
+    <g transform="translate(310 78)">
+      <rect width="778" height="472" rx="22" fill="#161c29"/>
+      <text x="24" y="38" class="label">Latest forwarded items</text>
+      <g transform="translate(24 68)">
+        <rect width="730" height="88" rx="16" fill="#222a3a"/>
+        <circle cx="30" cy="30" r="18" fill="#29cc7a"/>
+        <text x="64" y="24" class="label">Kamavv</text>
+        <text x="64" y="48" class="body">New Discord message forwarded to Lark successfully.</text>
+        <text x="64" y="72" class="small">#dc-message-test · 2026-07-06 10:00:56 UTC</text>
+      </g>
+      <g transform="translate(24 174)">
+        <rect width="730" height="88" rx="16" fill="#222a3a"/>
+        <circle cx="30" cy="30" r="18" fill="#5865f2"/>
+        <text x="64" y="24" class="label">Alice</text>
+        <text x="64" y="48" class="body">Attachment and embed metadata are included in the notification.</text>
+        <text x="64" y="72" class="small">#alerts · 2026-07-06 09:35:36 UTC</text>
+      </g>
+      <g transform="translate(24 280)">
+        <rect width="730" height="88" rx="16" fill="#222a3a"/>
+        <circle cx="30" cy="30" r="18" fill="#f0b429"/>
+        <text x="64" y="24" class="label">System</text>
+        <text x="64" y="48" class="body">Test notification completed: Lark + Gmail destinations responded OK.</text>
+        <text x="64" y="72" class="small">local test · current session</text>
+      </g>
+      <text x="24" y="424" class="mono">messages.json is ignored by Git and remains local.</text>
+    </g>
+  </g>
+</svg>

@@ -252,6 +252,14 @@ git check-ignore -v .env bridge.log messages.json
 
 如果 token、Webhook 或密码可能泄露，请立即轮换。
 
+### Discord 用户 Token 风险
+
+本项目当前使用 **Discord 用户 Token + Gateway** 方案，便于本地测试，无需邀请 Bot。
+
+> **警告**：自动化普通用户账号可能违反 [Discord 服务条款](https://support.discord.com/hc/en-us/articles/115002192352-Automated-User-Accounts-Self-Bots)，存在封号风险。请仅用于个人本地测试，风险自负。
+
+如果 Token 或 Webhook 曾经泄露，请立即轮换。
+
 ## 许可证
 
 MIT License，见 [LICENSE](LICENSE)。

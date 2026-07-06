@@ -252,6 +252,14 @@ Make sure you did not commit:
 
 Rotate any token, webhook, or password that may have been exposed.
 
+### Discord User Token Risk
+
+This project currently uses a **Discord user token + Gateway** approach for local testing, without requiring a bot invitation.
+
+> **Warning**: Automating a normal user account may violate the [Discord Terms of Service](https://support.discord.com/hc/en-us/articles/115002192352-Automated-User-Accounts-Self-Bots) and can lead to account action. Use it only for personal local testing and at your own risk.
+
+If a token or webhook may have leaked, rotate it immediately.
+
 ## License
 
 MIT License. See [LICENSE](LICENSE).

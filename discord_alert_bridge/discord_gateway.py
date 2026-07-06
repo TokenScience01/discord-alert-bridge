@@ -15,7 +15,9 @@ from websockets.asyncio.client import ClientConnection
 from .config import AppConfig
 from .formatting import format_discord_message
 from .forwarders import CompositeForwarder
+from .message_store import record_message
 from .models import DiscordMessage
+from .paths import MESSAGES_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -202,6 +204,12 @@ class UserGatewayClient:
             message.channel_name or message.channel_id,
             message.author.display_name(),
         )
+
+        try:
+            record_message(MESSAGES_PATH, message)
+            logger.info("Stored Discord message %s", message.id)
+        except Exception:
+            logger.exception("Failed to store Discord message %s", message.id)
 
         alert = format_discord_message(message, self._config.alert_prefix)
         try:

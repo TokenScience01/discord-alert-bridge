@@ -14,24 +14,34 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
+from .admin_auth import (
+    SESSION_COOKIE,
+    admin_password,
+    auth_required,
+    clear_session_cookie_header,
+    issue_session_token,
+    parse_cookie_header,
+    session_cookie_header,
+    username_from_request,
+    verify_credentials,
+)
+from .admin_ui import render_login_page, render_page as render_dashboard_page
 from .config import AppConfig, ConfigError, GmailConfig, WebhookConfig, parse_channel_references
 from .forwarders import build_forwarder
+from .message_store import list_messages
 from .models import Alert
+from .paths import ENV_EXAMPLE_PATH, ENV_PATH, LOG_PATH, MESSAGES_PATH, PID_PATH, ROOT
 
-
-ROOT = Path(__file__).resolve().parent.parent
-ENV_PATH = ROOT / ".env"
-ENV_EXAMPLE_PATH = ROOT / ".env.example"
-PID_PATH = ROOT / ".bridge.pid"
-LOG_PATH = ROOT / "bridge.log"
 SESSION_BANNER_PREFIX = "===== Bridge session started"
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 
 CONFIG_FIELDS = [
+    "ADMIN_USERNAME",
+    "ADMIN_PASSWORD",
     "DISCORD_USER_TOKEN",
     "DISCORD_CHANNEL_URLS",
     "DISCORD_CHANNEL_IDS",
@@ -55,6 +65,8 @@ CONFIG_FIELDS = [
 ]
 
 FIELD_DEFAULTS = {
+    "ADMIN_USERNAME": "admin",
+    "ADMIN_PASSWORD": "",
     "DISCORD_USER_TOKEN": "",
     "DISCORD_CHANNEL_URLS": "",
     "DISCORD_CHANNEL_IDS": "",
@@ -78,6 +90,7 @@ FIELD_DEFAULTS = {
 }
 
 SECRET_FIELDS = {
+    "ADMIN_PASSWORD",
     "DISCORD_USER_TOKEN",
     "SMTP_PASSWORD",
     "LARK_SECRET",
@@ -86,6 +99,7 @@ SECRET_FIELDS = {
 
 
 def run() -> None:
+    _load_env()
     host = os.getenv("ADMIN_HOST", DEFAULT_HOST)
     port = int(os.getenv("ADMIN_PORT", str(DEFAULT_PORT)))
     try:
@@ -127,11 +141,11 @@ def _find_listener_pid(port: int) -> int | None:
 
 
 class AdminHandler(BaseHTTPRequestHandler):
-    server_version = "DiscordAlertBridgeAdmin/0.1"
+    server_version = "DiscordAlertBridgeAdmin/0.2"
 
     def do_HEAD(self) -> None:
         route = urlparse(self.path).path
-        if route == "/":
+        if route in {"/", "/login"}:
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
@@ -140,23 +154,66 @@ class AdminHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         route = urlparse(self.path).path
+        if route == "/login":
+            if self._current_user():
+                self._redirect("/")
+                return
+            self._send_html(render_login_page())
+            return
         if route == "/":
+            if not self._current_user():
+                self._redirect("/login")
+                return
             self._send_html(render_page())
             return
+        if not self._current_user():
+            return self._unauthorized()
         if route == "/api/config":
             self._send_json({"config": read_env()})
             return
         if route == "/api/status":
             self._send_json(build_status())
             return
+        if route == "/api/messages":
+            query = parse_qs(urlparse(self.path).query)
+            channel_id = query.get("channel_id", [None])[0]
+            self._send_json(list_messages(MESSAGES_PATH, channel_id=channel_id))
+            return
         self.send_error(HTTPStatus.NOT_FOUND)
 
     def do_POST(self) -> None:
         route = urlparse(self.path).path
+        if route == "/api/login":
+            data = self._read_json()
+            username = str(data.get("username", ""))
+            password = str(data.get("password", ""))
+            if not verify_credentials(username, password):
+                self._send_json(
+                    {"ok": False, "message": "账号或密码错误"},
+                    status=HTTPStatus.UNAUTHORIZED,
+                )
+                return
+            token = issue_session_token(username)
+            self._send_json(
+                {"ok": True, "message": "登录成功"},
+                extra_headers=[("Set-Cookie", session_cookie_header(token))],
+            )
+            return
+        if route == "/api/logout":
+            self._send_json(
+                {"ok": True, "message": "已退出"},
+                extra_headers=[("Set-Cookie", clear_session_cookie_header())],
+            )
+            return
+        if not self._current_user():
+            return self._unauthorized()
         if route == "/api/config":
             data = self._read_json()
             write_env({key: str(data.get(key, "")) for key in CONFIG_FIELDS})
             self._send_json({"ok": True, "status": build_status()})
+            return
+        if route == "/api/toggle":
+            self._send_json(toggle_bridge())
             return
         if route == "/api/start":
             self._send_json(start_bridge())
@@ -190,16 +247,54 @@ class AdminHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(encoded)
 
-    def _send_json(self, body: dict[str, Any], status: HTTPStatus = HTTPStatus.OK) -> None:
+    def _send_json(
+        self,
+        body: dict[str, Any],
+        status: HTTPStatus = HTTPStatus.OK,
+        extra_headers: list[tuple[str, str]] | None = None,
+    ) -> None:
         encoded = json.dumps(body, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(encoded)))
+        for key, value in extra_headers or []:
+            self.send_header(key, value)
         self.end_headers()
         self.wfile.write(encoded)
 
+    def _cookies(self) -> dict[str, str]:
+        return parse_cookie_header(self.headers.get("Cookie"))
+
+    def _current_user(self) -> str | None:
+        return username_from_request(self._cookies())
+
+    def _redirect(self, location: str) -> None:
+        self.send_response(HTTPStatus.FOUND)
+        self.send_header("Location", location)
+        self.end_headers()
+
+    def _unauthorized(self) -> None:
+        route = urlparse(self.path).path
+        if route.startswith("/api/"):
+            self._send_json(
+                {"ok": False, "message": "未登录"},
+                status=HTTPStatus.UNAUTHORIZED,
+            )
+            return
+        self._redirect("/login")
+
+
+def _load_env() -> None:
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    if ENV_PATH.exists():
+        load_dotenv(ENV_PATH, override=True)
+
 
 def read_env() -> dict[str, str]:
+    _load_env()
     values = dict(FIELD_DEFAULTS)
     source = ENV_PATH if ENV_PATH.exists() else ENV_EXAMPLE_PATH
     if not source.exists():
@@ -220,15 +315,22 @@ def read_env() -> dict[str, str]:
 
 
 def write_env(values: dict[str, str]) -> None:
+    existing = read_env()
     normalized = dict(FIELD_DEFAULTS)
     for key in CONFIG_FIELDS:
         normalized[key] = values.get(key, normalized[key]).strip()
+    if not normalized["ADMIN_PASSWORD"]:
+        normalized["ADMIN_PASSWORD"] = existing.get("ADMIN_PASSWORD", "")
     normalized["DISCORD_USER_TOKEN"] = normalize_discord_user_token(normalized["DISCORD_USER_TOKEN"])
     fill_channel_ids_from_refs(normalized)
 
     lines = [
         "# Managed by discord-alert-bridge admin page.",
         "# Uses a Discord personal user token for local testing only.",
+        "",
+        "# Admin login",
+        f"ADMIN_USERNAME={_quote_env(normalized['ADMIN_USERNAME'])}",
+        f"ADMIN_PASSWORD={_quote_env(normalized['ADMIN_PASSWORD'])}",
         "",
         "# Discord",
         f"DISCORD_USER_TOKEN={_quote_env(normalized['DISCORD_USER_TOKEN'])}",
@@ -311,7 +413,7 @@ def start_bridge() -> dict[str, Any]:
     if not status["running"]:
         return {
             "ok": False,
-            "message": "Bridge exited right after start. Check the log on the right.",
+            "message": "Bridge exited right after start. Check the log tab.",
             "status": status,
         }
     return {"ok": True, "message": f"Bridge started with PID {process.pid}.", "status": status}
@@ -365,6 +467,13 @@ def _session_banner_bytes() -> bytes:
     return f"\n{SESSION_BANNER_PREFIX} {stamp} =====\n".encode("utf-8")
 
 
+def toggle_bridge() -> dict[str, Any]:
+    status = build_status()
+    if status["running"]:
+        return stop_bridge()
+    return start_bridge()
+
+
 def stop_bridge() -> dict[str, Any]:
     pid = read_pid()
     if pid is None:
@@ -391,12 +500,18 @@ def build_status() -> dict[str, Any]:
         pid = None
     config = read_env()
     session_started_at = find_latest_session_start(LOG_PATH)
+    message_data = list_messages(MESSAGES_PATH)
     return {
         "running": running,
         "pid": pid,
         "log": tail_text(LOG_PATH, limit=12000, current_session_only=True),
         "session_started_at": session_started_at,
         "summary": summarize_config(config),
+        "messages": {
+            "total": message_data["total"],
+            "channels": message_data["channels"],
+            "items": message_data["messages"][:40],
+        },
     }
 
 
@@ -615,700 +730,14 @@ def validate_discord_user_token(value: str) -> list[str]:
 
 def render_page() -> str:
     config = read_env()
-    return f"""<!doctype html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Discord Alert Bridge</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <style>
-    :root {{
-      color-scheme: dark;
-      --bg: #0b0d12;
-      --bg-accent: radial-gradient(ellipse 80% 60% at 10% -10%, rgba(88, 101, 242, 0.28), transparent 55%),
-        radial-gradient(ellipse 60% 50% at 100% 0%, rgba(35, 165, 89, 0.12), transparent 50%),
-        #0b0d12;
-      --panel: rgba(22, 25, 34, 0.92);
-      --panel-soft: rgba(255, 255, 255, 0.03);
-      --text: #f2f3f5;
-      --muted: #949ba4;
-      --line: rgba(255, 255, 255, 0.08);
-      --accent: #5865f2;
-      --accent-hover: #4752c4;
-      --ok: #23a559;
-      --danger: #f23f43;
-      --warn: #f0b232;
-      --shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
-      --radius: 14px;
-    }}
-    * {{ box-sizing: border-box; }}
-    body {{
-      margin: 0;
-      min-height: 100vh;
-      font: 14px/1.5 "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: var(--bg-accent);
-      color: var(--text);
-    }}
-    header {{
-      position: sticky;
-      top: 0;
-      z-index: 20;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 20px;
-      padding: 16px 28px;
-      border-bottom: 1px solid var(--line);
-      background: rgba(11, 13, 18, 0.82);
-      backdrop-filter: blur(16px);
-    }}
-    .brand {{
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      min-width: 0;
-    }}
-    .brand-mark {{
-      width: 42px;
-      height: 42px;
-      border-radius: 12px;
-      background: linear-gradient(135deg, #5865f2 0%, #7289da 100%);
-      box-shadow: 0 10px 24px rgba(88, 101, 242, 0.35);
-      display: grid;
-      place-items: center;
-      font-weight: 800;
-      font-size: 18px;
-      color: #fff;
-      flex-shrink: 0;
-    }}
-    .brand h1 {{
-      margin: 0;
-      font-size: 18px;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-    }}
-    .brand p {{
-      margin: 2px 0 0;
-      color: var(--muted);
-      font-size: 12px;
-    }}
-    main {{
-      width: min(1240px, calc(100vw - 40px));
-      margin: 24px auto 48px;
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) 380px;
-      gap: 20px;
-    }}
-    section, aside {{
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-    }}
-    section {{
-      display: grid;
-      grid-template-columns: 180px minmax(0, 1fr);
-      overflow: hidden;
-      min-height: 620px;
-    }}
-    aside {{
-      padding: 20px;
-      align-self: start;
-      position: sticky;
-      top: 92px;
-    }}
-    .tabs {{
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      padding: 18px 12px;
-      border-right: 1px solid var(--line);
-      background: rgba(0, 0, 0, 0.18);
-    }}
-    .tab {{
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      width: 100%;
-      min-height: 42px;
-      padding: 10px 12px;
-      border: 1px solid transparent;
-      border-radius: 10px;
-      background: transparent;
-      color: var(--muted);
-      text-align: left;
-      transition: 0.18s ease;
-    }}
-    .tab:hover {{
-      background: var(--panel-soft);
-      color: var(--text);
-    }}
-    .tab.active {{
-      background: rgba(88, 101, 242, 0.16);
-      border-color: rgba(88, 101, 242, 0.28);
-      color: #fff;
-      box-shadow: inset 0 0 0 1px rgba(88, 101, 242, 0.08);
-    }}
-    .tab-icon {{
-      width: 22px;
-      text-align: center;
-      flex-shrink: 0;
-    }}
-    .config-body {{
-      padding: 24px 26px 28px;
-    }}
-    .panel-head {{
-      margin-bottom: 20px;
-    }}
-    .panel-head h2 {{
-      margin: 0 0 6px;
-      font-size: 20px;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-    }}
-    .panel-head p {{
-      margin: 0;
-      color: var(--muted);
-      font-size: 13px;
-    }}
-    .grid {{
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 16px;
-    }}
-    .field {{
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      min-width: 0;
-    }}
-    .field.full {{ grid-column: 1 / -1; }}
-    label {{
-      font-weight: 600;
-      font-size: 12px;
-      color: #b5bac1;
-      letter-spacing: 0.02em;
-    }}
-    input, select {{
-      width: 100%;
-      min-height: 42px;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      padding: 10px 12px;
-      background: rgba(0, 0, 0, 0.22);
-      color: var(--text);
-      font: inherit;
-      transition: border-color 0.18s ease, box-shadow 0.18s ease;
-    }}
-    input:focus, select:focus {{
-      outline: none;
-      border-color: rgba(88, 101, 242, 0.65);
-      box-shadow: 0 0 0 3px rgba(88, 101, 242, 0.18);
-    }}
-    .switch {{
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      min-height: 42px;
-      padding: 10px 12px;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      background: rgba(0, 0, 0, 0.18);
-      cursor: pointer;
-    }}
-    .switch input {{
-      width: 18px;
-      min-height: 18px;
-      accent-color: var(--accent);
-    }}
-    .toolbar {{
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      flex-wrap: wrap;
-      justify-content: flex-end;
-    }}
-    button {{
-      min-height: 40px;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      padding: 9px 14px;
-      font: inherit;
-      font-weight: 600;
-      cursor: pointer;
-      background: rgba(255, 255, 255, 0.04);
-      color: var(--text);
-      transition: 0.18s ease;
-    }}
-    button:hover:not(:disabled) {{
-      transform: translateY(-1px);
-      background: rgba(255, 255, 255, 0.07);
-    }}
-    button.primary {{
-      background: linear-gradient(180deg, #5865f2 0%, #4752c4 100%);
-      border-color: rgba(88, 101, 242, 0.5);
-      color: #fff;
-      box-shadow: 0 10px 24px rgba(88, 101, 242, 0.28);
-    }}
-    button.primary:hover:not(:disabled) {{
-      background: linear-gradient(180deg, #6873ff 0%, #5865f2 100%);
-    }}
-    button.danger {{
-      background: rgba(242, 63, 67, 0.12);
-      border-color: rgba(242, 63, 67, 0.35);
-      color: #ffb4b6;
-    }}
-    button:disabled {{ opacity: 0.5; cursor: wait; transform: none; }}
-    .status {{
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid var(--line);
-      font-weight: 600;
-      white-space: nowrap;
-    }}
-    .dot {{
-      width: 8px;
-      height: 8px;
-      border-radius: 999px;
-      background: var(--muted);
-      box-shadow: 0 0 10px transparent;
-    }}
-    .status.running .dot {{
-      background: var(--ok);
-      box-shadow: 0 0 10px rgba(35, 165, 89, 0.8);
-    }}
-    .status.stopped .dot {{
-      background: var(--danger);
-      box-shadow: 0 0 10px rgba(242, 63, 67, 0.55);
-    }}
-    .tab-panel {{ display: none; }}
-    .tab-panel.active {{ display: block; }}
-    .summary {{
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
-      margin-bottom: 16px;
-    }}
-    .stat-card {{
-      padding: 12px 14px;
-      border-radius: 12px;
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid var(--line);
-    }}
-    .stat-card span {{
-      display: block;
-      color: var(--muted);
-      font-size: 11px;
-      margin-bottom: 6px;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-    }}
-    .stat-card strong {{
-      display: block;
-      font-size: 14px;
-      line-height: 1.35;
-      word-break: break-word;
-    }}
-    .stat-card.wide {{ grid-column: 1 / -1; }}
-    .log-head {{
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      margin-bottom: 10px;
-    }}
-    .log-head h2 {{
-      margin: 0;
-      font-size: 16px;
-      font-weight: 700;
-    }}
-    .log-box {{
-      min-height: 320px;
-      max-height: 56vh;
-      overflow: auto;
-      margin: 0;
-      padding: 14px;
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      background: #090b10;
-      font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }}
-    .log-line {{ display: block; }}
-    .log-error {{ color: #ff8e90; }}
-    .log-warn {{ color: #ffd56a; }}
-    .log-info {{ color: #8fd3ff; }}
-    .log-ok {{ color: #7ddea2; }}
-    .log-banner {{ color: #c9cdff; font-weight: 700; }}
-    .log-muted {{ color: #6d7685; }}
-    .toast {{
-      min-height: 22px;
-      margin-bottom: 12px;
-      padding: 10px 12px;
-      border-radius: 10px;
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid var(--line);
-      color: var(--muted);
-    }}
-    .toast.error {{
-      color: #ffb4b6;
-      border-color: rgba(242, 63, 67, 0.35);
-      background: rgba(242, 63, 67, 0.08);
-    }}
-    .toast.ok {{
-      color: #9ae6b0;
-      border-color: rgba(35, 165, 89, 0.35);
-      background: rgba(35, 165, 89, 0.08);
-    }}
-    @media (max-width: 980px) {{
-      header {{ align-items: flex-start; flex-direction: column; }}
-      main {{ grid-template-columns: 1fr; }}
-      section {{ grid-template-columns: 1fr; }}
-      .tabs {{
-        flex-direction: row;
-        overflow-x: auto;
-        border-right: 0;
-        border-bottom: 1px solid var(--line);
-      }}
-      aside {{ position: static; }}
-      .grid {{ grid-template-columns: 1fr; }}
-      .summary {{ grid-template-columns: 1fr; }}
-    }}
-  </style>
-</head>
-<body>
-  <header>
-    <div class="brand">
-      <div class="brand-mark">D</div>
-      <div>
-        <h1>Discord Alert Bridge</h1>
-        <p>监听 Discord 频道，转发到 Lark / Gmail / 钉钉</p>
-      </div>
-    </div>
-    <div class="toolbar">
-      <span id="statusPill" class="status stopped"><span class="dot"></span><span id="statusText">已停止</span></span>
-      <button class="primary" id="saveBtn">保存配置</button>
-      <button id="startBtn">启动监听</button>
-      <button id="testBtn">测试通知</button>
-      <button class="danger" id="stopBtn">停止</button>
-      <button id="clearLogBtn">清空日志</button>
-    </div>
-  </header>
-
-  <main>
-    <section>
-      <div class="tabs" role="tablist">
-        <button class="tab active" data-tab="discord"><span class="tab-icon">💬</span>Discord</button>
-        <button class="tab" data-tab="gmail"><span class="tab-icon">✉️</span>Gmail</button>
-        <button class="tab" data-tab="lark"><span class="tab-icon">🐦</span>Lark</button>
-        <button class="tab" data-tab="dingtalk"><span class="tab-icon">📣</span>钉钉</button>
-      </div>
-
-      <div class="config-body">
-      <form id="configForm">
-        <div class="tab-panel active" id="tab-discord">
-          <div class="panel-head">
-            <h2>Discord 监听</h2>
-            <p>使用你的用户 Token 监听指定频道的新消息。</p>
-          </div>
-          <div class="grid">
-            {field("DISCORD_USER_TOKEN", "User Token", config, secret=True, full=True)}
-            {field("DISCORD_CHANNEL_URLS", "频道链接", config, full=True)}
-            {field("DISCORD_CHANNEL_IDS", "频道 ID", config)}
-            {field("DISCORD_ALLOWED_GUILD_IDS", "服务器 ID", config)}
-            {field("ALERT_PREFIX", "通知前缀", config)}
-            {select("LOG_LEVEL", "日志级别", config, ["DEBUG", "INFO", "WARNING", "ERROR"])}
-          </div>
-        </div>
-
-        <div class="tab-panel" id="tab-gmail">
-          <div class="panel-head">
-            <h2>Gmail 转发</h2>
-            <p>通过 SMTP 把消息发到邮箱。</p>
-          </div>
-          <div class="grid">
-            {toggle("GMAIL_ENABLED", "启用 Gmail", config)}
-            {toggle("SMTP_STARTTLS", "启用 STARTTLS", config)}
-            {field("SMTP_HOST", "SMTP Host", config)}
-            {field("SMTP_PORT", "SMTP Port", config)}
-            {field("SMTP_USERNAME", "SMTP Username", config)}
-            {field("SMTP_PASSWORD", "SMTP Password", config, secret=True)}
-            {field("SMTP_FROM", "发件人", config)}
-            {field("SMTP_TO", "收件人", config)}
-          </div>
-        </div>
-
-        <div class="tab-panel" id="tab-lark">
-          <div class="panel-head">
-            <h2>Lark / 飞书</h2>
-            <p>使用自定义机器人 Webhook 发送卡片通知。</p>
-          </div>
-          <div class="grid">
-            {toggle("LARK_ENABLED", "启用 Lark", config)}
-            {field("LARK_WEBHOOK_URL", "Webhook URL", config, full=True)}
-            {field("LARK_SECRET", "签名 Secret", config, secret=True, full=True)}
-          </div>
-        </div>
-
-        <div class="tab-panel" id="tab-dingtalk">
-          <div class="panel-head">
-            <h2>钉钉</h2>
-            <p>使用自定义机器人 Webhook 推送文本消息。</p>
-          </div>
-          <div class="grid">
-            {toggle("DINGTALK_ENABLED", "启用钉钉", config)}
-            {field("DINGTALK_WEBHOOK_URL", "Webhook URL", config, full=True)}
-            {field("DINGTALK_SECRET", "签名 Secret", config, secret=True, full=True)}
-          </div>
-        </div>
-      </form>
-      </div>
-    </section>
-
-    <aside>
-      <div class="summary">
-        <div class="stat-card"><span>进程 PID</span><strong id="pidValue">-</strong></div>
-        <div class="stat-card"><span>转发出口</span><strong id="forwardersValue">-</strong></div>
-        <div class="stat-card"><span>配置状态</span><strong id="readyValue">-</strong></div>
-        <div class="stat-card wide"><span>本次会话</span><strong id="sessionValue">-</strong></div>
-      </div>
-      <p id="toast" class="toast">准备就绪</p>
-      <div class="log-head"><h2>运行日志</h2></div>
-      <div id="logBox" class="log-box"></div>
-    </aside>
-  </main>
-
-  <script>
-    const fields = {json.dumps(CONFIG_FIELDS)};
-    const secretFields = new Set({json.dumps(sorted(SECRET_FIELDS))});
-    const form = document.querySelector("#configForm");
-    const toast = document.querySelector("#toast");
-    const statusPill = document.querySelector("#statusPill");
-    const statusText = document.querySelector("#statusText");
-    const logBox = document.querySelector("#logBox");
-    const saveBtn = document.querySelector("#saveBtn");
-    const startBtn = document.querySelector("#startBtn");
-    const testBtn = document.querySelector("#testBtn");
-    const stopBtn = document.querySelector("#stopBtn");
-    const clearLogBtn = document.querySelector("#clearLogBtn");
-
-    document.querySelectorAll(".tab").forEach((tab) => {{
-      tab.addEventListener("click", () => {{
-        document.querySelectorAll(".tab").forEach((item) => item.classList.remove("active"));
-        document.querySelectorAll(".tab-panel").forEach((item) => item.classList.remove("active"));
-        tab.classList.add("active");
-        document.querySelector("#tab-" + tab.dataset.tab).classList.add("active");
-      }});
-    }});
-
-    async function request(path, options = {{}}) {{
-      const response = await fetch(path, {{
-        headers: {{ "Content-Type": "application/json" }},
-        ...options,
-      }});
-      if (!response.ok) throw new Error(await response.text());
-      return response.json();
-    }}
-
-    function collectConfig() {{
-      const values = {{}};
-      fields.forEach((name) => {{
-        const input = form.elements[name];
-        if (!input) return;
-        values[name] = input.type === "checkbox" ? String(input.checked) : input.value;
-      }});
-      return values;
-    }}
-
-    function applyConfig(config) {{
-      fields.forEach((name) => {{
-        const input = form.elements[name];
-        if (!input) return;
-        if (input.type === "checkbox") {{
-          input.checked = ["1", "true", "yes", "on"].includes(String(config[name] || "").toLowerCase());
-        }} else {{
-          input.value = config[name] || "";
-        }}
-      }});
-      autofillDiscordIds();
-    }}
-
-    function parseDiscordChannelRefs(value) {{
-      const channelIds = new Set();
-      const guildIds = new Set();
-      const refs = String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
-      refs.forEach((ref) => {{
-        const urlMatch = ref.match(/(?:https?:\\/\\/)?(?:canary\\.|ptb\\.)?discord(?:app)?\\.com\\/channels\\/(\\d+|@me)\\/(\\d+)(?:\\/\\d+)?/i);
-        const pairMatch = ref.match(/^(\\d{{15,25}})\\/(\\d{{15,25}})$/);
-        if (urlMatch) {{
-          if (urlMatch[1] !== "@me") guildIds.add(urlMatch[1]);
-          channelIds.add(urlMatch[2]);
-        }} else if (pairMatch) {{
-          guildIds.add(pairMatch[1]);
-          channelIds.add(pairMatch[2]);
-        }}
-      }});
-      return {{
-        channelIds: Array.from(channelIds).sort(),
-        guildIds: Array.from(guildIds).sort(),
-      }};
-    }}
-
-    function autofillDiscordIds() {{
-      const channelUrlInput = form.elements.DISCORD_CHANNEL_URLS;
-      const channelIdInput = form.elements.DISCORD_CHANNEL_IDS;
-      const guildIdInput = form.elements.DISCORD_ALLOWED_GUILD_IDS;
-      if (!channelUrlInput || !channelIdInput || !guildIdInput) return;
-      const parsed = parseDiscordChannelRefs(channelUrlInput.value);
-      if (parsed.channelIds.length) channelIdInput.value = parsed.channelIds.join(",");
-      if (parsed.guildIds.length) guildIdInput.value = parsed.guildIds.join(",");
-    }}
-
-    function escapeHtml(value) {{
-      return String(value)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;");
-    }}
-
-    function formatLogLine(line) {{
-      const safe = escapeHtml(line);
-      if (!line.trim()) return `<span class="log-line log-muted">${{safe}}</span>`;
-      if (line.includes("Bridge session started")) return `<span class="log-line log-banner">${{safe}}</span>`;
-      if (/\\bERROR\\b/.test(line)) return `<span class="log-line log-error">${{safe}}</span>`;
-      if (/\\bWARNING\\b/.test(line)) return `<span class="log-line log-warn">${{safe}}</span>`;
-      if (/Forwarded Discord message/.test(line)) return `<span class="log-line log-ok">${{safe}}</span>`;
-      if (/\\bINFO\\b/.test(line)) return `<span class="log-line log-info">${{safe}}</span>`;
-      return `<span class="log-line">${{safe}}</span>`;
-    }}
-
-    function renderLog(text) {{
-      const content = text && text.trim() ? text : "（暂无日志）";
-      logBox.innerHTML = content.split("\\n").map(formatLogLine).join("");
-      logBox.scrollTop = logBox.scrollHeight;
-    }}
-
-    function renderStatus(status) {{
-      const running = Boolean(status.running);
-      statusPill.classList.toggle("running", running);
-      statusPill.classList.toggle("stopped", !running);
-      statusText.textContent = running ? "运行中" : "已停止";
-      document.querySelector("#pidValue").textContent = status.pid || "-";
-      document.querySelector("#forwardersValue").textContent =
-        status.summary.enabled_forwarders.length ? status.summary.enabled_forwarders.join(", ") : "-";
-      document.querySelector("#readyValue").textContent =
-        status.summary.ready ? "已就绪" : status.summary.missing.concat(status.summary.errors || []).join(", ");
-      document.querySelector("#sessionValue").textContent = status.session_started_at || "未启动";
-      renderLog(status.log || "");
-    }}
-
-    function setToast(message, type = "") {{
-      toast.textContent = message;
-      toast.className = "toast " + type;
-    }}
-
-    async function saveConfig() {{
-      saveBtn.disabled = true;
-      try {{
-        const data = await request("/api/config", {{
-          method: "POST",
-          body: JSON.stringify(collectConfig()),
-        }});
-        renderStatus(data.status);
-        setToast("配置已保存", "ok");
-      }} catch (error) {{
-        setToast("保存失败: " + error.message, "error");
-      }} finally {{
-        saveBtn.disabled = false;
-      }}
-    }}
-
-    async function startBridge() {{
-      startBtn.disabled = true;
-      try {{
-        await saveConfig();
-        const data = await request("/api/start", {{ method: "POST", body: "{{}}" }});
-        renderStatus(data.status);
-        setToast(data.message, data.ok ? "ok" : "error");
-      }} catch (error) {{
-        setToast("启动失败: " + error.message, "error");
-      }} finally {{
-        startBtn.disabled = false;
-      }}
-    }}
-
-    async function sendTestAlert() {{
-      testBtn.disabled = true;
-      try {{
-        await saveConfig();
-        const data = await request("/api/test-alert", {{ method: "POST", body: "{{}}" }});
-        renderStatus(data.status);
-        setToast(data.message, data.ok ? "ok" : "error");
-      }} catch (error) {{
-        setToast("测试失败: " + error.message, "error");
-      }} finally {{
-        testBtn.disabled = false;
-      }}
-    }}
-
-    async function stopBridge() {{
-      stopBtn.disabled = true;
-      try {{
-        const data = await request("/api/stop", {{ method: "POST", body: "{{}}" }});
-        renderStatus(data.status);
-        setToast(data.message, "ok");
-      }} catch (error) {{
-        setToast("停止失败: " + error.message, "error");
-      }} finally {{
-        stopBtn.disabled = false;
-      }}
-    }}
-
-    async function clearLog() {{
-      clearLogBtn.disabled = true;
-      try {{
-        const data = await request("/api/clear-log", {{ method: "POST", body: "{{}}" }});
-        renderStatus(data.status);
-        setToast(data.message, data.ok ? "ok" : "error");
-      }} catch (error) {{
-        setToast("清空日志失败: " + error.message, "error");
-      }} finally {{
-        clearLogBtn.disabled = false;
-      }}
-    }}
-
-    async function refresh() {{
-      try {{
-        const data = await request("/api/status");
-        renderStatus(data);
-      }} catch (error) {{
-        setToast("状态刷新失败: " + error.message, "error");
-      }}
-    }}
-
-    saveBtn.addEventListener("click", saveConfig);
-    startBtn.addEventListener("click", startBridge);
-    testBtn.addEventListener("click", sendTestAlert);
-    stopBtn.addEventListener("click", stopBridge);
-    clearLogBtn.addEventListener("click", clearLog);
-    form.elements.DISCORD_CHANNEL_URLS.addEventListener("input", autofillDiscordIds);
-    form.elements.DISCORD_CHANNEL_URLS.addEventListener("paste", () => setTimeout(autofillDiscordIds, 0));
-    form.elements.DISCORD_CHANNEL_URLS.addEventListener("change", autofillDiscordIds);
-
-    request("/api/config").then((data) => applyConfig(data.config)).then(refresh);
-    setInterval(refresh, 2500);
-  </script>
-</body>
-</html>"""
-
+    return render_dashboard_page(
+        config,
+        field=field,
+        select=select,
+        toggle=toggle,
+        config_fields=CONFIG_FIELDS,
+        secret_fields=SECRET_FIELDS,
+    )
 
 def field(
     name: str,

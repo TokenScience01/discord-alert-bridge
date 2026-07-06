@@ -22,7 +22,62 @@ The project includes a local web console for editing configuration, starting or 
 
 This project currently reads Discord credentials from `DISCORD_USER_TOKEN`. Automating a personal Discord account may violate Discord's terms and can put the account at risk. Use only in environments where you have authorization and understand the risk. Do not commit tokens, webhook URLs, email passwords, logs, or message history.
 
-This README intentionally does not describe how to obtain or extract a Discord user token.
+## Get a Discord User Token
+
+The steps below use **Chrome / Edge** DevTools to read the token from network requests. Firefox and Safari follow the same idea.
+
+### 1. Sign in to Discord in the browser
+
+1. Open [https://discord.com/app](https://discord.com/app)
+2. Sign in with the account you want to monitor
+
+### 2. Open DevTools
+
+1. Press `F12`, or right-click the page and choose **Inspect**
+2. Open the **Network** tab
+3. Enable **Preserve log** so requests are not cleared when you navigate
+4. Filter by `api` to show Discord API calls only
+
+### 3. Trigger an API request
+
+Any of these works:
+
+- Refresh the page (`Cmd+R` / `Ctrl+R`)
+- Click a server or channel in the sidebar
+- Send a test message in any channel
+
+You should see requests to `discord.com/api/...` appear in the list.
+
+### 4. Copy the `authorization` header
+
+1. Click any `discord.com/api` request
+2. Open **Headers** → **Request Headers**
+3. Find the `authorization` field
+4. Copy the full value into `.env` as `DISCORD_USER_TOKEN`, or paste it into the **User Token** field in the web console
+
+Example:
+
+```env
+DISCORD_USER_TOKEN=your_long_token_string
+```
+
+If the copied value includes a `Bearer ` prefix, that is fine. This project strips it automatically.
+
+### 5. Verify the token
+
+| Valid | Invalid |
+| --- | --- |
+| A long alphanumeric string from the `authorization` header | Starts with `Bot ` (that is a bot token) |
+| Stored only in your local `.env` | A full browser cookie string (`__dcfduid=...`) |
+| Used for your own local testing | Shared in chat, screenshots, or committed to Git |
+
+After saving, use **Test notification** or **Start monitoring** in the web console. If the token is invalid, the log will show an auth failure. Sign out and back in to Discord, then extract a fresh token.
+
+### Security notes
+
+- A user token is effectively your Discord login credential. Anyone with it can act as your account.
+- Close DevTools after extraction and never share the token.
+- If a token may have leaked, change your Discord password immediately to invalidate it, then extract a new one.
 
 ## Quick Start
 

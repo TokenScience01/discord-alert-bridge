@@ -22,7 +22,64 @@
 
 当前项目从 `DISCORD_USER_TOKEN` 读取 Discord 凭据。自动化个人 Discord 账号可能违反 Discord 服务条款，也可能带来账号风险。请只在你有授权且理解风险的环境中使用。不要提交 token、Webhook URL、邮箱密码、日志或消息历史。
 
-本文档不会说明如何获取或提取 Discord 用户 token。
+## 获取 Discord 用户 Token
+
+下面以 **Chrome / Edge** 为例，通过浏览器开发者工具从网络请求中读取 Token。Firefox、Safari 步骤类似。
+
+### 1. 登录 Discord 网页版
+
+1. 打开 [https://discord.com/app](https://discord.com/app)
+2. 登录你要用来监听的 Discord 账号
+
+### 2. 打开开发者工具
+
+1. 按 `F12`，或右键页面 → **检查**
+2. 切换到 **Network（网络）** 面板
+3. 勾选 **Preserve log（保留日志）**，避免切换页面后请求被清空
+4. 在过滤框输入 `api`，只显示 Discord API 请求
+
+### 3. 触发一条 API 请求
+
+任选其一即可：
+
+- 刷新页面（`Cmd+R` / `Ctrl+R`）
+- 点击左侧任意服务器或频道
+- 在任意频道发送一条测试消息
+
+此时 Network 列表中会出现发往 `discord.com/api/...` 的请求。
+
+### 4. 复制 Authorization 请求头
+
+1. 点击列表中任意一条 `discord.com/api` 请求
+2. 打开 **Headers（标头）** → **Request Headers（请求标头）**
+3. 找到 `authorization` 字段
+4. 复制它的完整值，填入 `.env` 的 `DISCORD_USER_TOKEN`，或粘贴到 Web 控制台的 **User Token** 输入框
+
+示例：
+
+```env
+DISCORD_USER_TOKEN=你的长串token
+```
+
+如果复制出来带 `Bearer ` 前缀也没关系，本项目会自动去掉。
+
+### 5. 验证 Token 是否正确
+
+正确 Token 的特征：
+
+| 正确 | 错误 |
+| --- | --- |
+| 一长串字母数字与符号 | 以 `Bot ` 开头（这是 Bot Token） |
+| 来自 `authorization` 请求头 | 浏览器 Cookie 整段（`__dcfduid=...`） |
+| 只用于你自己的本地 `.env` | 发到群聊、截图或提交到 Git |
+
+保存后，在 Web 控制台点击 **测试通知** 或 **启动监听**。若 Token 无效，日志中会出现鉴权失败；请重新登录 Discord 后再提取一次。
+
+### 安全提醒
+
+- Token 等同于你的 Discord 登录凭据，泄露后他人可冒充你的账号
+- 提取完成后关闭开发者工具，不要把 Token 发给任何人
+- 若 Token 曾泄露，请立即在 Discord 中**修改密码**以使其失效，然后重新提取
 
 ## 快速开始
 

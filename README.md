@@ -1,70 +1,106 @@
 # discord-alert-bridge
 
-把指定 Discord 频道的新消息转发到 **Lark / 飞书**、**Gmail** 或 **钉钉**。
+Language: English | [简体中文](README.zh-CN.md)
 
-自带本地 Web 配置页，可保存配置、启动监听、测试通知、查看日志。
+Forward messages from selected Discord channels to **Lark / Feishu**, **Gmail**, or **DingTalk**.
 
-## 功能
+The project includes a local web console for editing configuration, starting or stopping the bridge, sending a test notification, viewing logs, and reviewing recently captured messages.
 
-- 监听一个或多个 Discord 频道
-- 自动解析频道名、发送人、消息内容
-- Lark 卡片式通知（频道 / 发送人 / 内容分区展示）
-- 支持 Gmail SMTP、钉钉 Webhook
-- 本地配置页：`http://127.0.0.1:8765`
-- 日志按会话分隔，支持一键清空
+## Features
 
-## 截图
+- Monitor one or more Discord channel URLs or channel IDs.
+- Parse channel, author, message content, attachments, and embeds.
+- Forward to Lark / Feishu with an interactive card layout.
+- Forward to Gmail through SMTP.
+- Forward to DingTalk through a custom robot webhook.
+- Local admin console at `http://127.0.0.1:8765`.
+- Optional admin login for the local console.
+- Test notification button for validating Lark / Gmail / DingTalk without starting Discord monitoring.
+- Runtime log, per-session log view, clear-log action, and recent-message storage.
 
-配置页为深色 Discord 风格界面；Lark 通知为紫色标题卡片。
+## Important Notice
 
-## 快速开始
+This project currently reads Discord credentials from `DISCORD_USER_TOKEN`. Automating a personal Discord account may violate Discord's terms and can put the account at risk. Use only in environments where you have authorization and understand the risk. Do not commit tokens, webhook URLs, email passwords, logs, or message history.
 
-### 1. 克隆并安装
+This README intentionally does not describe how to obtain or extract a Discord user token.
+
+## Quick Start
+
+### 1. Install
 
 ```bash
-git clone https://github.com/TokenScience01/discord-alert-bridge.git
-cd discord-alert-bridge
+cd /Users/jione/CodeProject/JionepythonProject/discord-alert-bridge
 
 python3 -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
+source .venv/bin/activate
 
 pip install -r requirements.txt
 cp .env.example .env
 ```
 
-### 2. 编辑 `.env`
+If you are using the existing Conda environment:
 
-至少配置以下内容：
+```bash
+cd /Users/jione/CodeProject/JionepythonProject/discord-alert-bridge
+/opt/anaconda3/envs/discord-alert-bridge/bin/python -m pip install -r requirements.txt
+cp .env.example .env
+```
+
+### 2. Configure
+
+Edit `.env`, or use the web console.
+
+Minimum fields:
 
 ```env
-DISCORD_USER_TOKEN=your_discord_user_token
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=change_this_password
+
+DISCORD_USER_TOKEN=replace_with_authorized_token
 DISCORD_CHANNEL_URLS=https://discord.com/channels/YOUR_GUILD_ID/YOUR_CHANNEL_ID
 
 LARK_ENABLED=true
 LARK_WEBHOOK_URL=https://open.larksuite.com/open-apis/bot/v2/hook/replace_me
 ```
 
-也支持同时开启 Gmail / 钉钉，详见 [.env.example](.env.example)。
+Gmail and DingTalk can be enabled at the same time. See [.env.example](.env.example) for all variables.
 
-### 3. 启动
-
-**Web 配置页（推荐）**
+### 3. Start The Admin Console
 
 ```bash
+cd /Users/jione/CodeProject/JionepythonProject/discord-alert-bridge
 python3 admin.py
 ```
 
-浏览器打开 [http://127.0.0.1:8765](http://127.0.0.1:8765)，保存配置后点击「启动监听」。
+Or with the Conda environment:
 
-macOS 也可以双击 `start_admin.command`。
+```bash
+/opt/anaconda3/envs/discord-alert-bridge/bin/python admin.py
+```
 
-**命令行**
+Open:
+
+```text
+http://127.0.0.1:8765
+```
+
+On macOS, you can also double-click:
+
+```text
+start_admin.command
+```
+
+### 4. Start Monitoring
+
+In the web console, save the configuration and click **Start Listening**.
+
+You can also run the bridge directly:
 
 ```bash
 python3 main.py
 ```
 
-或安装为可编辑包：
+Or install the package in editable mode:
 
 ```bash
 pip install -e .
@@ -72,123 +108,150 @@ discord-alert-bridge
 discord-alert-bridge-admin
 ```
 
-## 配置说明
+## Web Console
+
+The local console supports:
+
+- Login and logout.
+- Saving `.env` configuration.
+- Auto-filling guild ID and channel ID from Discord channel URLs.
+- Starting, stopping, and toggling the bridge process.
+- Sending a test notification without Discord monitoring.
+- Viewing the current session log.
+- Clearing the log.
+- Viewing recently recorded messages grouped by channel.
+
+Default console credentials come from `.env.example`:
+
+```env
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=changeme
+```
+
+Change `ADMIN_PASSWORD` before keeping the console running.
+
+## Configuration
+
+### Admin
+
+| Variable | Description |
+| --- | --- |
+| `ADMIN_USERNAME` | Local web console username. |
+| `ADMIN_PASSWORD` | Local web console password. |
 
 ### Discord
 
-| 变量 | 说明 |
-|------|------|
-| `DISCORD_USER_TOKEN` | Discord 用户 Token（仅建议本地测试） |
-| `DISCORD_CHANNEL_URLS` | 频道链接，逗号分隔多个 |
-| `DISCORD_CHANNEL_IDS` | 可选，显式频道 ID |
-| `DISCORD_ALLOWED_GUILD_IDS` | 可选，限制服务器 ID |
-| `DISCORD_GATEWAY_PROXY` | 留空=系统代理；`none`=直连；或 `socks5://127.0.0.1:7890` |
+| Variable | Description |
+| --- | --- |
+| `DISCORD_USER_TOKEN` | Authorized Discord user token used by the gateway client. Keep it private. |
+| `DISCORD_CHANNEL_URLS` | One or more Discord channel URLs, comma-separated. |
+| `DISCORD_CHANNEL_IDS` | Optional explicit channel IDs. |
+| `DISCORD_ALLOWED_GUILD_IDS` | Optional guild allow-list. |
+| `DISCORD_GATEWAY_PROXY` | Empty = library/system default; `none` = direct connection; or an explicit proxy such as `socks5://127.0.0.1:7890`. |
+| `ALERT_PREFIX` | Prefix used in forwarded notifications. |
+| `LOG_LEVEL` | `DEBUG`, `INFO`, `WARNING`, or `ERROR`. |
 
-频道链接示例：
-
-```text
-https://discord.com/channels/1234567890123456789/1234567890123456789
-```
-
-### Lark / 飞书
-
-1. 在飞书群中添加「自定义机器人」
-2. 复制 Webhook URL 到 `LARK_WEBHOOK_URL`
-3. 若启用了签名校验，填写 `LARK_SECRET`
-
-Lark 通知示例：
+Channel URL format:
 
 ```text
-┌─────────────────────────┐
-│  channel-name · Alice   │
-├─────────────────────────┤
-│ 频道         发送人      │
-│ general      Alice      │
-├─────────────────────────┤
-│ 消息正文内容...          │
-└─────────────────────────┘
+https://discord.com/channels/GUILD_ID/CHANNEL_ID
 ```
+
+### Lark / Feishu
+
+| Variable | Description |
+| --- | --- |
+| `LARK_ENABLED` | Set to `true` to enable Lark forwarding. |
+| `LARK_WEBHOOK_URL` | Custom bot webhook URL. |
+| `LARK_SECRET` | Optional signing secret. |
 
 ### Gmail
 
-- 建议开启两步验证后创建 [App Password](https://myaccount.google.com/apppasswords)
-- 填入 `SMTP_PASSWORD`
-- `SMTP_TO` 支持逗号分隔多个收件人
+| Variable | Description |
+| --- | --- |
+| `GMAIL_ENABLED` | Set to `true` to enable Gmail forwarding. |
+| `SMTP_HOST` | SMTP server, defaults to `smtp.gmail.com`. |
+| `SMTP_PORT` | SMTP port, defaults to `587`. |
+| `SMTP_STARTTLS` | Set to `true` for STARTTLS. |
+| `SMTP_USERNAME` | SMTP username. |
+| `SMTP_PASSWORD` | SMTP password or Gmail App Password. |
+| `SMTP_FROM` | Sender address. |
+| `SMTP_TO` | Recipient addresses, comma-separated. |
 
-### 钉钉
+For Gmail, an App Password is usually required when two-step verification is enabled.
 
-使用自定义机器人 Webhook；配置 `DINGTALK_SECRET` 时自动加签。
+### DingTalk
 
-## 开发与测试
+| Variable | Description |
+| --- | --- |
+| `DINGTALK_ENABLED` | Set to `true` to enable DingTalk forwarding. |
+| `DINGTALK_WEBHOOK_URL` | Custom robot webhook URL. |
+| `DINGTALK_SECRET` | Optional signing secret. |
+
+## Runtime Files
+
+The app may create these local files:
+
+| File | Purpose |
+| --- | --- |
+| `.env` | Local secrets and configuration. |
+| `admin.log` | Admin console log. |
+| `bridge.log` | Bridge runtime log. |
+| `.bridge.pid` | Running bridge process ID. |
+| `.admin.pid` | Admin process ID when started manually. |
+| `messages.json` | Recently recorded forwarded messages. |
+
+These files are ignored by Git because they may contain tokens, webhook URLs, or message content.
+
+## Development
 
 ```bash
 pip install -e ".[test]"
 python3 -m unittest discover -s tests -v
 ```
 
-## 项目结构
+## Project Structure
 
 ```text
 discord-alert-bridge/
 ├── discord_alert_bridge/
-│   ├── admin.py          # Web 配置页
-│   ├── config.py         # 环境变量加载
-│   ├── discord_gateway.py# Discord Gateway 监听
-│   ├── formatting.py     # 消息格式化
-│   └── forwarders.py     # Lark / Gmail / 钉钉转发
-├── admin.py              # 配置页入口
-├── main.py               # 监听入口
-├── .env.example          # 配置模板（可提交）
+│   ├── admin.py            # Admin API and process control
+│   ├── admin_auth.py       # Local console authentication
+│   ├── admin_ui.py         # Web console HTML/CSS/JS
+│   ├── config.py           # Environment configuration
+│   ├── discord_gateway.py  # Discord Gateway listener
+│   ├── formatting.py       # Notification formatting
+│   ├── forwarders.py       # Lark / Gmail / DingTalk forwarding
+│   ├── message_store.py    # Recent-message storage
+│   ├── models.py           # Shared data models
+│   └── paths.py            # Project paths
+├── admin.py                # Admin console entrypoint
+├── main.py                 # Bridge entrypoint
+├── .env.example            # Configuration template
+├── requirements.txt
 └── tests/
 ```
 
-## 安全与隐私
+## Security Checklist
 
-### 不要提交敏感信息
-
-以下内容**已被 `.gitignore` 排除**，请勿手动加入版本库：
-
-- `.env`（Token、Webhook、邮箱密码）
-- `*.log`（日志可能包含 Webhook URL）
-- `.bridge.pid`、`.admin.pid`
-
-首次开源前请确认：
+Before sharing or publishing this repository:
 
 ```bash
 git status
-git check-ignore -v .env bridge.log
+git check-ignore -v .env bridge.log messages.json
 ```
 
-### Discord 用户 Token 风险
+Make sure you did not commit:
 
-本项目当前使用 **Discord 用户 Token + Gateway** 方案，便于本地测试，无需邀请 Bot。
+- `.env`
+- Any token or webhook URL
+- Gmail passwords or App Passwords
+- `bridge.log`, `admin.log`, or archived logs
+- `messages.json`
+- Real guild, channel, or message history data
 
-> **警告**：自动化普通用户账号可能违反 [Discord 服务条款](https://support.discord.com/hc/en-us/articles/115002192352-Automated-User-Accounts-Self-Bots)，存在封号风险。请仅用于个人本地测试，风险自负。
+Rotate any token, webhook, or password that may have been exposed.
 
-如果 Token 或 Webhook 曾经泄露，请立即轮换。
+## License
 
-### 代理环境
-
-若本机开启了 Clash / V2Ray 等 SOCKS 代理，需安装 `python-socks`（已包含在 `requirements.txt`）。连接异常时可设置：
-
-```env
-DISCORD_GATEWAY_PROXY=none
-```
-
-## 开源协议
-
-本项目采用 [MIT License](LICENSE)。
-
-## 贡献
-
-欢迎提交 Issue 和 Pull Request。
-
-贡献前请：
-
-1. 不要提交真实 Token、Webhook、个人频道 ID
-2. 运行测试：`python3 -m unittest discover -s tests -v`
-3. 保持 `.env.example` 使用占位符
-
-## 免责声明
-
-本软件按「原样」提供，作者不对账号封禁、消息漏发、服务中断或任何间接损失负责。使用前请遵守 Discord、飞书、Google、钉钉等平台的服务条款与当地法律法规。
+MIT License. See [LICENSE](LICENSE).

@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "discord-alert-bridge"
+version = "0.1.0"
+description = "Forward messages from selected Discord channels to Gmail, Lark, or DingTalk."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = [
+  "httpx>=0.27.0,<1.0.0",
+  "python-dotenv>=1.0.1,<2.0.0",
+  "python-socks[asyncio]>=2.4.3,<3.0.0",
+  "websockets>=13.0,<16.0.0",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=8.0.0,<9.0.0",
+]
+
+[project.scripts]
+discord-alert-bridge = "discord_alert_bridge.main:run"
+discord-alert-bridge-admin = "discord_alert_bridge.admin:run"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["discord_alert_bridge*"]

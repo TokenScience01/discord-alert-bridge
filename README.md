@@ -84,20 +84,24 @@ After saving, use **Test notification** or **Start monitoring** in the web conso
 ### 1. Install
 
 ```bash
-cd /Users/jione/CodeProject/JionepythonProject/discord-alert-bridge
+git clone https://github.com/TokenScience01/discord-alert-bridge.git
+cd discord-alert-bridge
 
 python3 -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
 
 pip install -r requirements.txt
 cp .env.example .env
 ```
 
-If you are using the existing Conda environment:
+If you use Conda:
 
 ```bash
-cd /Users/jione/CodeProject/JionepythonProject/discord-alert-bridge
-/opt/anaconda3/envs/discord-alert-bridge/bin/python -m pip install -r requirements.txt
+git clone https://github.com/TokenScience01/discord-alert-bridge.git
+cd discord-alert-bridge
+
+conda activate discord-alert-bridge   # or create first: conda create -n discord-alert-bridge python=3.11 -y
+pip install -r requirements.txt
 cp .env.example .env
 ```
 
@@ -123,14 +127,17 @@ Gmail and DingTalk can be enabled at the same time. See [.env.example](.env.exam
 ### 3. Start The Admin Console
 
 ```bash
-cd /Users/jione/CodeProject/JionepythonProject/discord-alert-bridge
+cd discord-alert-bridge
+source .venv/bin/activate   # if using venv
 python3 admin.py
 ```
 
-Or with the Conda environment:
+Or with Conda:
 
 ```bash
-/opt/anaconda3/envs/discord-alert-bridge/bin/python admin.py
+cd discord-alert-bridge
+conda activate discord-alert-bridge
+python admin.py
 ```
 
 Open:

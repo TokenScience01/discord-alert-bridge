@@ -86,20 +86,24 @@ DISCORD_USER_TOKEN=你的长串token
 ### 1. 安装
 
 ```bash
-cd /Users/jione/CodeProject/JionepythonProject/discord-alert-bridge
+git clone https://github.com/TokenScience01/discord-alert-bridge.git
+cd discord-alert-bridge
 
 python3 -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
 
 pip install -r requirements.txt
 cp .env.example .env
 ```
 
-如果使用已有 Conda 环境：
+如果使用 Conda：
 
 ```bash
-cd /Users/jione/CodeProject/JionepythonProject/discord-alert-bridge
-/opt/anaconda3/envs/discord-alert-bridge/bin/python -m pip install -r requirements.txt
+git clone https://github.com/TokenScience01/discord-alert-bridge.git
+cd discord-alert-bridge
+
+conda activate discord-alert-bridge   # 或先创建：conda create -n discord-alert-bridge python=3.11 -y
+pip install -r requirements.txt
 cp .env.example .env
 ```
 
@@ -125,14 +129,17 @@ Gmail 和钉钉可以同时开启，完整变量见 [.env.example](.env.example)
 ### 3. 启动 Web 控制台
 
 ```bash
-cd /Users/jione/CodeProject/JionepythonProject/discord-alert-bridge
+cd discord-alert-bridge
+source .venv/bin/activate   # 若使用 venv
 python3 admin.py
 ```
 
 或者使用 Conda 环境：
 
 ```bash
-/opt/anaconda3/envs/discord-alert-bridge/bin/python admin.py
+cd discord-alert-bridge
+conda activate discord-alert-bridge
+python admin.py
 ```
 
 打开：
